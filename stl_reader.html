@@ -59,15 +59,21 @@
 			var reader = new FileReader();
 			reader.readAsText(file, "UTF-8");
 			reader.onload = function (evt) {
+				for (var i = scene.children.length - 1; i >= 0; i--) {
+					if (scene.children[i].type == "Mesh") {
+						scene.remove(scene.children[i]);
+					}
+				}
+			
 				var regex = /(vertex\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
 				var matches = evt.target.result.match(regex);
 				
+				var geometry = new THREE.Geometry();
 				for (var i = 0; i < matches.length; i++) {
 					split = matches[i].split(" ")
 					
-					var geometry, v1, v2, v3;
+					var v1, v2, v3;
 					if (i % 3 == 0) {
-						geometry = new THREE.Geometry();
 						v1 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
 						geometry.vertices.push(v1);
 					} else if (i % 3 == 1) {
@@ -76,16 +82,16 @@
 					} else if (i % 3 == 2) {
 						v3 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
 						geometry.vertices.push(v3);
-						geometry.faces.push(new THREE.Face3(0, 1, 2));
-						var redMat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.7, transparent: true});
+						geometry.faces.push(new THREE.Face3(geometry.vertices.length-3,geometry.vertices.length-2,geometry.vertices.length-1));
+					}
+				}
+				
+				var redMat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.7, transparent: true});
 						var wireframe = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
 						var triangle = new THREE.Mesh(geometry, redMat);
 						var triangle2 = new THREE.Mesh(geometry, wireframe);
 						scene.add(triangle)
 						scene.add(triangle2)
-					}
-				}
-				
 			}
 			reader.onerror = function (evt) {
         $("div.disp-stl").html("error reading file");
