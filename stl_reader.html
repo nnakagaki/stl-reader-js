@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>STL Reader</title>
-		<style>
-			body { margin: 0; }
-			canvas { width: 100%; height: 100% }
-		</style>
+  <meta charset="utf-8">
+  <title>STL Reader</title>
+	<style>
+		body { margin: 0; overflow: hidden }
+		input[type="file"] { position: fixed; top: 0; left: 0; float: left; z-index: 2 }
+		canvas { position: fixed; top: 0; left: 0 }
+	</style>
 </head>
 <script src="jquery-1.11.1.min.js"></script>
 <script src="three.min.js"></script>
 <script src="OrbitControls.js"></script>
 <body>
-
 	<input type="file" id="stl_input" onchange="handleStlFile(this.files)">
 	<div class="disp-stl"></div>
 </body>
@@ -51,6 +51,7 @@
 		cameraControls.update();
 	}
 	render();
+
 	
 	
 	function handleStlFile(files) {
@@ -59,42 +60,52 @@
 			var reader = new FileReader();
 			reader.readAsText(file, "UTF-8");
 			reader.onload = function (evt) {
-				for (var i = scene.children.length - 1; i >= 0; i--) {
-					if (scene.children[i].type == "Mesh") {
-						scene.remove(scene.children[i]);
+				if (evt.target.result.substr(0,5) === "solid") {
+					for (var i = scene.children.length - 1; i >= 0; i--) {
+						if (scene.children[i].type == "Mesh") {
+							scene.remove(scene.children[i]);
+						}
 					}
-				}
-			
-				var regex = /(vertex\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
-				var matches = evt.target.result.match(regex);
 				
-				var geometry = new THREE.Geometry();
-				for (var i = 0; i < matches.length; i++) {
-					split = matches[i].split(" ")
+					var regex = /(vertex\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
+					var matches = evt.target.result.match(regex);
 					
-					var v1, v2, v3;
-					if (i % 3 == 0) {
-						v1 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-						geometry.vertices.push(v1);
-					} else if (i % 3 == 1) {
-						v2 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-						geometry.vertices.push(v2);
-					} else if (i % 3 == 2) {
-						v3 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-						geometry.vertices.push(v3);
-						geometry.faces.push(new THREE.Face3(geometry.vertices.length-3,geometry.vertices.length-2,geometry.vertices.length-1));
+					var geometry = new THREE.Geometry();
+					for (var i = 0; i < matches.length; i++) {
+						split = matches[i].split(" ")
+						
+						var v1, v2, v3;
+						if (i % 3 == 0) {
+							v1 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
+							geometry.vertices.push(v1);
+						} else if (i % 3 == 1) {
+							v2 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
+							geometry.vertices.push(v2);
+						} else if (i % 3 == 2) {
+							v3 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
+							geometry.vertices.push(v3);
+							geometry.faces.push(new THREE.Face3(geometry.vertices.length-2,geometry.vertices.length-3,geometry.vertices.length-1));
+							geometry.faces.push(new THREE.Face3(geometry.vertices.length-3,geometry.vertices.length-2,geometry.vertices.length-1));
+						}
+					}
+					
+					var redMat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
+					var wireframe = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
+					var triangle = new THREE.Mesh(geometry, redMat);
+					var triangle2 = new THREE.Mesh(geometry, wireframe);
+					scene.add(triangle)
+					scene.add(triangle2)
+				} else {
+					var reader = new FileReader();
+					reader.readAsBinaryString(file);
+					reader.onload = function (evt) {
+						console.log(evt.target.result)
 					}
 				}
-				
-				var redMat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.7, transparent: true});
-						var wireframe = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
-						var triangle = new THREE.Mesh(geometry, redMat);
-						var triangle2 = new THREE.Mesh(geometry, wireframe);
-						scene.add(triangle)
-						scene.add(triangle2)
 			}
+			
 			reader.onerror = function (evt) {
-        $("div.disp-stl").html("error reading file");
+				$("div.disp-stl").html("error reading file");
 			}
 		}
 	}
