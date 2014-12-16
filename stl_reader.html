@@ -32,28 +32,70 @@
 	cameraControls.maxDistance = 400;
 	cameraControls.minDistance = 10;
 	cameraControls.update();
-	
+
 	var ambientLight = new THREE.AmbientLight(0x330000);
   scene.add(ambientLight);
-				
+
 	var pointLight = new THREE.PointLight(0xffffff);
 	pointLight.position.set( 100, 100, 100 );
 	scene.add( pointLight );
-	
+
 	var directionalLight = new THREE.DirectionalLight(0xffffff);
   directionalLight.position.set(1, 1, 1).normalize();
   scene.add(directionalLight);
 
-	
+  var raycaster = new THREE.Raycaster();
+
+  document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+
+  var mouse = { x: 0, y: 0 }, INTERSECTED;
+
+  function onDocumentMouseMove( event ) {
+
+				event.preventDefault();
+
+				mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+				mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+			}
+
 	function render() {
+    var vector = new THREE.Vector3( mouse.x, mouse.y, 0.5 ).unproject( camera );
+
+				raycaster.ray.set( camera.position, vector.sub( camera.position ).normalize() );
+
+				var intersects = raycaster.intersectObjects( scene.children );
+
+				if ( intersects.length > 0 ) {
+
+          console.log(intersects)
+
+					if ( INTERSECTED != intersects[ 0 ] ) {
+
+						// if ( INTERSECTED ) INTERSECTED.face.color.materialIndex = 1;
+
+						INTERSECTED = intersects[ 0 ];
+            console.log(INTERSECTED)
+					  // console.log(INTERSECTED.material.color)
+
+					}
+
+				} else {
+
+					// if ( INTERSECTED ) INTERSECTED.material.program = programStroke;
+
+					INTERSECTED = null;
+
+				}
+
 		renderer.render( scene, camera );
 		requestAnimationFrame( render );
 		cameraControls.update();
 	}
 	render();
 
-	
-	
+
+
 	function handleStlFile(files) {
 		file = files[0]
 		if (file) {
@@ -66,14 +108,14 @@
 							scene.remove(scene.children[i]);
 						}
 					}
-				
+
 					var regex = /(vertex\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
 					var matches = evt.target.result.match(regex);
-					
+
 					var geometry = new THREE.Geometry();
 					for (var i = 0; i < matches.length; i++) {
 						split = matches[i].split(" ")
-						
+
 						var v1, v2, v3;
 						if (i % 3 == 0) {
 							v1 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
@@ -84,14 +126,20 @@
 						} else if (i % 3 == 2) {
 							v3 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
 							geometry.vertices.push(v3);
-							geometry.faces.push(new THREE.Face3(geometry.vertices.length-2,geometry.vertices.length-3,geometry.vertices.length-1));
-							geometry.faces.push(new THREE.Face3(geometry.vertices.length-3,geometry.vertices.length-2,geometry.vertices.length-1));
+              var face1 = new THREE.Face3(geometry.vertices.length-2,geometry.vertices.length-3,geometry.vertices.length-1);
+              face1.materialIndex = 0;
+              var face2 = new THREE.Face3(geometry.vertices.length-3,geometry.vertices.length-2,geometry.vertices.length-1);
+              face2.materialIndex = 0;
+							geometry.faces.push(face1);
+							geometry.faces.push(face2);
 						}
 					}
-					
-					var redMat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
+          var redMat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
+          var greenMat = new THREE.MeshBasicMaterial({color: 0x00ff00, opacity: 0.5, transparent: true});
+
+					var geomMats = [redMat,greenMat];
 					var wireframe = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
-					var triangle = new THREE.Mesh(geometry, redMat);
+					var triangle = new THREE.Mesh(geometry, geomMats);
 					var triangle2 = new THREE.Mesh(geometry, wireframe);
 					scene.add(triangle)
 					scene.add(triangle2)
@@ -103,7 +151,7 @@
 					}
 				}
 			}
-			
+
 			reader.onerror = function (evt) {
 				$("div.disp-stl").html("error reading file");
 			}
