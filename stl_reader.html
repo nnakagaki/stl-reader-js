@@ -4,33 +4,81 @@
   <meta charset="utf-8">
   <title>STL Reader</title>
 	<style>
-		body { margin: 0; overflow: hidden }
-		input[type="file"] { position: fixed; top: 0; left: 0; float: left; z-index: 2 }
-		canvas { position: fixed; top: 0; left: 0 }
+		body { 
+			margin: 0;
+			padding: 0;
+			border: 0;
+			font-family: sans-serif;
+			font-size: 15px;
+		}
+
+		div.sidebar { 
+			position: fixed;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			width: 200px;
+			background: lightgrey;
+			z-index: 1;
+		}
+
+		div.sidebar input[type="file"] { 
+			float: left;
+			-webkit-box-sizing: border-box;
+			-moz-box-sizing: border-box;
+			box-sizing: border-box;
+			width: 100%;
+			border-bottom: 1px solid grey;
+			padding: 3px;
+		}
+
+		div.sidebar div {
+			-webkit-box-sizing: border-box;
+			-moz-box-sizing: border-box;
+			box-sizing: border-box;
+			width: 100%;
+			float: left;
+			padding: 5px;
+		}
+
+		div.sidebar input[type="file"]:focus {
+			background: yellow;
+		}
+
+		canvas {
+			position: fixed;
+			top: 0;
+			left: 200px;
+		}
 	</style>
 </head>
 <script src="jquery-1.11.1.min.js"></script>
 <script src="three.min.js"></script>
 <script src="OrbitControls.js"></script>
 <body>
-	<input type="file" id="stl_input" onchange="handleStlFile(this.files)">
-	<div class="disp-stl"></div>
+	<div class="sidebar">
+		<input type="file" id="stl_input" onchange="handleStlFile(this.files)">
+		<div class="triangle-face-count"></div>
+		<div class="triangle-vertex-count"></div>
+		<div class="triangle-line-count"></div>
+		<div class="regular-face-count"></div>
+	</div>
 </body>
 
 <script>
 var scene = new THREE.Scene();
-var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+var camera = new THREE.PerspectiveCamera( 75, (window.innerWidth - 200) / window.innerHeight, 0.1, 1000 );
+
+console.log(camera)
 
 var renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize( window.innerWidth, window.innerHeight );
+renderer.setSize( window.innerWidth - 200, window.innerHeight );
 document.body.appendChild( renderer.domElement );
 
 camera.position.set( -40, -40, 10 );
 
 cameraControls = new THREE.OrbitControls(camera, renderer.domElement);
 cameraControls.target.set( 0, 0, 0);
-cameraControls.maxDistance = 400;
-cameraControls.minDistance = 10;
 cameraControls.update();
 
 // var ambientLight = new THREE.AmbientLight(0x330000);
@@ -49,7 +97,7 @@ var raycaster = new THREE.Raycaster();
 var mouse = { x: 0, y: 0 }, INTERSECTED;
 
 $(document).on("click", function(event) {
-	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	mouse.x = ( (event.clientX - 200) / (window.innerWidth - 200) ) * 2 - 1;
 	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
 
 	var vector = new THREE.Vector3( mouse.x, mouse.y, 0.5 ).unproject( camera );
@@ -73,7 +121,7 @@ $(document).on("click", function(event) {
 	} else {
 		INTERSECTED = null;
 	}
-})
+});
 
 function render() {
 	renderer.render( scene, camera );
@@ -83,6 +131,13 @@ function render() {
 
 render();
 
+$(window).on("resize", function() {
+	camera.aspect = (window.innerWidth - 200) / window.innerHeight;
+	camera.updateProjectionMatrix();
+
+	renderer.setSize( (window.innerWidth - 200), window.innerHeight );
+
+});
 
 
 function handleStlFile(files) {
@@ -98,32 +153,98 @@ function handleStlFile(files) {
 					}
 				}
 
-				var regex = /(vertex\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
-				var matches = evt.target.result.match(regex);
-				console.log(evt.target.result)
+				var vertRegex = /(vertex\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
+				var vertMatches = evt.target.result.match(vertRegex);
+
+				var normRegex = /(facet\snormal\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
+				var normMatches = evt.target.result.match(normRegex);
+
 				var geometry = new THREE.Geometry();
-				var geomMats = new Array(matches.length);
+				var geomMats = new Array(vertMatches.length);
 
-				for (var i = 0; i < matches.length; i++) {
+				var lines = {}
+
+				for (var i = 0; i < vertMatches.length; i++) {
 					geomMats[i] = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
-					split = matches[i].split(" ")
+					split = vertMatches[i].split(" ")
 
-					var v1, v2, v3;
+					var v1, v2, v3, v1Index, v2Index, v3Index;
 					if (i % 3 == 0) {
+						v1Index = -1;
+
 						v1 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-						geometry.vertices.push(v1);
+						geometry.vertices.forEach(function(vertex, index) {
+							if (Math.abs(v1.x - vertex.x) < 0.0001 && Math.abs(v1.y - vertex.y) < 0.0001 && Math.abs(v1.z - vertex.z) < 0.0001) {
+								v1Index = index + 1;
+
+								return false;
+							}
+						});
+
+						if (v1Index === -1) {
+							v1Index = geometry.vertices.push(v1);
+						}
 					} else if (i % 3 == 1) {
+						v2Index = -1;
+
 						v2 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-						geometry.vertices.push(v2);
+						geometry.vertices.forEach(function(vertex, index) {
+							if (Math.abs(v2.x - vertex.x) < 0.0001 && Math.abs(v2.y - vertex.y) < 0.0001 && Math.abs(v2.z - vertex.z) < 0.0001) {
+								v2Index = index + 1;
+
+								return false;
+							}
+						});
+
+						if (v2Index === -1) {
+							v2Index = geometry.vertices.push(v2);
+						}
 					} else if (i % 3 == 2) {
+						v3Index = -1;
 						v3 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-						geometry.vertices.push(v3);
+						geometry.vertices.forEach(function(vertex, index) {
+							if (Math.abs(v3.x - vertex.x) < 0.0001 && Math.abs(v3.y - vertex.y) < 0.0001 && Math.abs(v3.z - vertex.z) < 0.0001) {
+								v3Index = index + 1;
+
+								return false
+							}
+						});
+
+						if (v3Index === -1) {
+							v3Index = geometry.vertices.push(v3);
+						}
+
+						normSplit = normMatches[Math.floor(i/3)].split(" ");
+						normal = new THREE.Vector3(parseFloat(normSplit[2]),parseFloat(normSplit[3]),parseFloat(normSplit[4]));
+
             // var face1 = new THREE.Face3(geometry.vertices.length-2,geometry.vertices.length-3,geometry.vertices.length-1);
             // face1.materialIndex = i;
-            var face2 = new THREE.Face3(geometry.vertices.length-3,geometry.vertices.length-2,geometry.vertices.length-1);
+            var face2 = new THREE.Face3(v1Index - 1, v2Index - 1, v3Index - 1, normal);
             face2.materialIndex = i;
 						// geometry.faces.push(face1);
-						geometry.faces.push(face2);
+						var currFace = geometry.faces.push(face2);
+						currFace -= 1;
+
+						var line = [v1Index,v2Index].sort();
+						if (lines[line]) {
+							lines[line].push(currFace);
+						} else {
+							lines[line] = [currFace];
+						}
+
+						var line = [v2Index,v3Index].sort();
+						if (lines[line]) {
+							lines[line].push(currFace);
+						} else {
+							lines[line] = [currFace];
+						}
+
+						var line = [v1Index,v3Index].sort();
+						if (lines[line]) {
+							lines[line].push(currFace);
+						} else {
+							lines[line] = [currFace];
+						}
 					}
 				}
 
@@ -133,28 +254,27 @@ function handleStlFile(files) {
 
 				scene.add(triangle)
 				scene.add(triangle2)
+
+				postProcess(geometry, lines)
 			} else {
 				for (var i = scene.children.length - 1; i >= 0; i--) {
 					if (scene.children[i].type == "Mesh") {
 						scene.remove(scene.children[i]);
 					}
 				}
-				console.log(file)
 				var reader = new FileReader();
 				reader.readAsArrayBuffer(file);
 				reader.onload = function (evt) {
-					console.log(evt)
-					parseStlBinary(evt.target.result)
+					handleStlBinary(evt.target.result)
 				}
 
 				// "stl" represents a raw STL binary read from HTTP response data
-				var parseStlBinary = function(stl) {
+				var handleStlBinary = function(stl) {
 				  // create three.js geometry object, discussed later
 				  var geo = new THREE.Geometry();
 
 				  // The stl binary is read into a DataView for processing
 			    var dv = new DataView(stl, 80); // 80 == unused header
-			    console.log(dv)
 			    var isLittleEndian = true;
 
 			    // Read a 32 bit unsigned integer
@@ -164,9 +284,9 @@ function handleStlFile(files) {
 			    for (var i = 0; i < triangles; i++) {
 		        // Get the normal for this triangle by reading 3 32 but floats
 		        var normal = new THREE.Vector3(
-		            dv.getFloat32(offset, isLittleEndian),
-		            dv.getFloat32(offset+4, isLittleEndian),
-		            dv.getFloat32(offset+8, isLittleEndian)
+		          dv.getFloat32(offset, isLittleEndian),
+		          dv.getFloat32(offset+4, isLittleEndian),
+		          dv.getFloat32(offset+8, isLittleEndian)
 		        );
 		        offset += 12;
 
@@ -191,7 +311,6 @@ function handleStlFile(files) {
 		        geo.faces.push(new THREE.Face3(i*3, i*3+1, i*3+2, normal));
 			    }
 
-				  // continue parsing STL faces for rendering...
 				  var mat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
 				  var mat2 = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
 				  var mesh = new THREE.Mesh(geo, mat);
@@ -199,6 +318,8 @@ function handleStlFile(files) {
 
 					scene.add(mesh);
 					scene.add(mesh2);
+
+					postProcess(geo)
 				};
 			}
 		}
@@ -207,6 +328,67 @@ function handleStlFile(files) {
 			$("div.disp-stl").html("error reading file");
 		}
 	}
+}
+
+var postProcess = function(geometry, lines) {
+	var faceNum = geometry.faces.length;
+	$("div.triangle-face-count").html("Triangle Faces: " + faceNum);
+
+	var vertNum = geometry.vertices.length
+	$("div.triangle-vertex-count").html("Triangle Vertices: " + vertNum);
+
+	var lineNum = 0
+	for (var index in lines) {
+		lineNum += 1;
+	}
+	$("div.triangle-line-count").html("Triangle Lines: " + lineNum);
+
+	var faceConnections = {};
+	for (var index in lines) {
+		if (faceConnections[lines[index][0]]) {
+			faceConnections[lines[index][0]].push(lines[index][1]);
+		} else {
+			faceConnections[lines[index][0]] = [lines[index][1]];
+		}
+		
+		if (faceConnections[lines[index][1]]) {
+			faceConnections[lines[index][1]].push(lines[index][0]);
+		} else {
+			faceConnections[lines[index][1]] = [lines[index][0]];
+		}
+	}
+
+	var checked = {};
+	var regFaces = [];
+
+	var recursiveFaceConnect = function(index) {
+		faceConnections[index].forEach(function(el) {
+			if (!checked[el]) {
+				var currFaceNormal = geometry.faces[el].normal;
+				if (Math.abs(currFaceNormal.x-normal.x) < 0.0001 && Math.abs(currFaceNormal.y-normal.y) < 0.0001 && Math.abs(currFaceNormal.z-normal.z) < 0.0001) {
+					face.push(el);
+					checked[el] = true;
+
+					recursiveFaceConnect(el);
+				}
+			}
+		});
+	};
+
+	for (var index in faceConnections) {
+		index = parseInt(index)
+		if (!checked[index]) {
+			var face = [index];
+			var normal = geometry.faces[index].normal;
+			checked[index] = true;
+			recursiveFaceConnect(index)
+
+			regFaces.push(face);
+		}
+	}
+
+	$("div.regular-face-count").html("Regular Faces: " + regFaces.length);
+	console.log(geometry)
 }
 
 </script>
