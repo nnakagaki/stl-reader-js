@@ -38,3 +38,7 @@ Sample stl files are located in the repo.
 * There are no repeated faces
 * Each face is a triangle (consisting of three vertices)
 * There is only one solid object
+
+=== Future work
+* Binary stl file format does not do regular face, side, and vertex counting.
+* Camera controls are clunky.
