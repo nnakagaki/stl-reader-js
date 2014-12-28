@@ -1,28 +1,40 @@
-= STL file reader
+= STL file reader JavaScript version
 
-This ruby program reads in an stl file and outputs the number of faces, sides, and vertices that the 3D object has.
+This JavaScript program reads in an stl file and outputs the number of triangular faces, sides, and vertices, as well as the number of regular faces, sides, and vertices that the 3D object has. It also renders the 3D object using three.js.
 
-=== Face counting logic
+Open stl_reader.html in a browser (preferably Chrome) and choose an stl file to read.
+
+Sample stl files are located in the repo.
+
+=== Triangular face counting logic
  
 * Divide the total number of vertices in the stl file by three.
  
-=== Side counting logic
+=== Triangular side counting logic
  
 * Sides are identified as a sorted-pair of vertices.
 * All sides are saved as keys in a Hash pointing to true.
  
-=== Vertex counting logic
+=== Triangular vertex counting logic
  
 * Same idea as the side counting logic.
 * Vertices are identified as an array of x, y, z coordinates.
 * All vertices are saved as keys in a Hash pointing to true.
+
+=== Regular face counting logic
+
+* Check which sides are connected to each other.
+* If two connected faces have the same normal, they are in the same regular face.
+
+=== Regular side counting logic
+
+* If a side connects two faces with the same normal, the side is not a regular side.
+
+=== Regular vertex counting logic
+
+* If all faces connected to the vertex have the same normal, the vertex is not a regular vertex.
  
 === Assumptions
 * There are no repeated faces
 * Each face is a triangle (consisting of three vertices)
 * There is only one solid object
- 
-Sample stl files are located in the repo.
- 
-To run the code:
-<tt>ruby stl_reader.rb your_stl_file.stl</tt>
