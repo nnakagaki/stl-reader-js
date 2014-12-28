@@ -12,6 +12,10 @@
 			font-size: 15px;
 		}
 
+		*:focus {
+			outline: 0;
+		}
+
 		div.sidebar { 
 			position: fixed;
 			top: 0;
@@ -61,6 +65,28 @@
 			cursor: col-resize;
 		}
 
+		div.sidebar div.face-selectors {
+			text-align: center;
+		}
+
+		div.sidebar div.face-selectors h1 {
+			font-size: 18px;
+			padding: 0;
+			margin: 3px;
+		}
+
+		div.sidebar div.face-selectors button {
+			border-radius: 3px;
+			border: 0;
+			padding: 3px 5px;
+			margin: 5px;
+			background: linear-gradient(rgb(200,200,200), rgb(120,120,120));
+		}
+
+		div.sidebar div.face-selectors button.selected {
+			background: linear-gradient(rgb(120,120,120), rgb(200,200,200));
+		}
+
 		canvas {
 			position: fixed;
 			top: 0;
@@ -84,6 +110,12 @@
 		<div class="regular-face-count">Regular Faces: --</div>
 		<div class="regular-vertex-count">Regular Vertices: --</div>
 		<div class="regular-line-count">Regular Lines: --</div>
+		<div class="divider"></div>
+		<div class="face-selectors">
+			<h1>Face selection mode</h1>
+			<button class="triangle selected">Triangle</button>
+			<button class="regular">Regular</button>
+		</div>
 	</div>
 </body>
 
@@ -287,7 +319,7 @@ var asciiHandle = function (evt) {
 	scene.add(triangle2)
 	
 	// Filling statistics in sidebar and calculating regular faces, vertices, and lines
-	postProcess(geometry, lines, vertices)
+	postProcess(geometry, geomMats, lines, vertices)
 }
 
 
@@ -354,7 +386,7 @@ var binaryHandle = function (evt) {
 
 
 // function that fills in sidebar statistics and calculates regular faces, vertices, and lines
-var postProcess = function(geometry, lines, vertices) {
+var postProcess = function(geometry, materials, lines, vertices) {
 	// filling in barebone information from the stl file triangles
 	var faceNum = geometry.faces.length;
 	$("div.triangle-face-count").html("Triangle Faces: " + faceNum);
@@ -446,6 +478,9 @@ var postProcess = function(geometry, lines, vertices) {
 	}
 
 	$("div.regular-line-count").html("Regular Lines: " + regLineCount);
+
+	// setup face selecting click event
+	faceSelectionSetup(regFaces, geometry, materials);
 }
 
 
@@ -458,38 +493,82 @@ var removePreviousSolid = function () {
 	}
 }
 
+// checks if two vectors or vertices are the same by checking with 0.0001 accuracy
+var isSameVectorOrVertex = function (vector1, vector2) {
+	var condx = Math.abs(vector1.x - vector2.x) < 0.0001;
+	var condy = Math.abs(vector1.y - vector2.y) < 0.0001;
+	var condz = Math.abs(vector1.z - vector2.z) < 0.0001;
+	
+	return condx && condy && condz;
+}
 
-// raycaster is used to find faces that the mouse is intersecting when the user clicks
-var raycaster = new THREE.Raycaster();
-var mouse = { x: 0, y: 0 }, intersected;
+// setting up face selecting clikc event
+var faceSelectionSetup = function(regFaces, geometry, materials) {
+	// raycaster is used to find faces that the mouse is intersecting when the user clicks
+	var raycaster = new THREE.Raycaster();
+	var intersected;
 
-// When the user clicks, faces that were intersected are found.
-// The color of the very first face that is intersected is changed to yellow or red.
-$("canvas").on("click", function(event) {
-	var sidebarWidth = $("div.sidebar").width();
-	mouse.x = ( (event.clientX - sidebarWidth) / (window.innerWidth - sidebarWidth) ) * 2 - 1;
-	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+	// When the user clicks, faces that were intersected are found.
+	// The color of the very first face that is intersected is changed to yellow or red.
+	$("canvas").on("click", function(event) {
+		var sidebarWidth = $("div.sidebar").width();
+		mouse.x = ( (event.clientX - sidebarWidth) / (window.innerWidth - sidebarWidth) ) * 2 - 1;
+		mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+		var vector = new THREE.Vector3( mouse.x, mouse.y, 0.5 ).unproject( camera );
 
-	var vector = new THREE.Vector3( mouse.x, mouse.y, 0.5 ).unproject( camera );
+		raycaster.ray.set( camera.position, vector.sub( camera.position ).normalize() );
+		var intersects = raycaster.intersectObjects( scene.children );
 
-	raycaster.ray.set( camera.position, vector.sub( camera.position ).normalize() );
+		// function that changes color of a face
+		var triangleFaceColorChanger = function(face) {
+			var matIndex = face.materialIndex;
 
-	var intersects = raycaster.intersectObjects( scene.children );
-
-	if (intersects.length > 0) {
-		if (intersected != intersects[ 0 ]) {
-			intersected = intersects[ 0 ];
-			var matIndex = intersected.face.materialIndex;
-			if (intersected.object.material.materials[matIndex].color.g === 1) {
-				intersected.object.material.materials[matIndex].color.g = 0;
+			if (materials[matIndex].color.g === 1) {
+				materials[matIndex].color.g = 0;
 			} else {
-				intersected.object.material.materials[matIndex].color.g = 1;
+				materials[matIndex].color.g = 1;
 			}
+		};
+
+		// face selection logic based on the current mode
+		if (intersects.length > 0) {
+			if (intersected != intersects[ 0 ]) {
+				intersected = intersects[ 0 ];
+				if ($("div.sidebar div.face-selectors button.selected")[0].classList[0] === "triangle") {
+					triangleFaceColorChanger(intersected.face);
+				} else {
+					var intersectedRegFace;
+					regFaces.every(function(regFace) {
+						var isFace;
+						regFace.every(function(faceIndex) {
+							if (faceIndex === intersected.faceIndex) {
+								isFace = true;
+								return false;
+							} else {
+								return true;
+							}
+						});
+
+						if (isFace) {
+							intersectedRegFace = regFace;
+							return false;
+						} else {
+							return true;
+						}
+					});
+
+					intersectedRegFace.forEach(function(faceIndex) {
+						triangleFaceColorChanger(geometry.faces[faceIndex]);
+					});
+				}
+			}
+		} else {
+			intersected = null;
 		}
-	} else {
-		intersected = null;
-	}
-});
+	});
+};
+
+var mouse = { x: 0, y: 0 }
 
 // mouse x position used for sizing the sidebar
 $(document).on("mousemove", function(event) {
@@ -532,14 +611,15 @@ $("div.sidebar div.expander").on("mousedown", function(event) {
 	});
 });
 
-// checks if two vectors or vertices are the same by checking with 0.0001 accuracy
-var isSameVectorOrVertex = function (vector1, vector2) {
-	var condx = Math.abs(vector1.x - vector2.x) < 0.0001;
-	var condy = Math.abs(vector1.y - vector2.y) < 0.0001;
-	var condz = Math.abs(vector1.z - vector2.z) < 0.0001;
-	
-	return condx && condy && condz;
-}
+// chaging face selection mode
+$("div.sidebar div.face-selectors button").on("click", function(event) {
+	$(event.currentTarget).addClass("selected");
+	if ($(event.currentTarget)[0].classList[0] === "triangle") {
+		$("div.sidebar div.face-selectors button.regular").removeClass("selected");
+	} else {
+		$("div.sidebar div.face-selectors button.triangle").removeClass("selected");
+	}
+});
 
 </script>
 
