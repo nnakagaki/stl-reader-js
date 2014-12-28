@@ -20,6 +20,7 @@
 			width: 200px;
 			background: lightgrey;
 			z-index: 1;
+			min-width: 200px;
 		}
 
 		div.sidebar input[type="file"] { 
@@ -41,8 +42,23 @@
 			padding: 5px;
 		}
 
-		div.sidebar input[type="file"]:focus {
-			background: yellow;
+		div.sidebar div.divider {
+			width: 100%;
+			height: 1px;
+			padding: 0;
+			background: grey;
+		}
+
+		div.sidebar div.expander {
+			position: fixed;
+			left: 200px;
+			height: 100%;
+			width: 5px;
+			background: lightgrey;
+			border-right: 1px solid grey;
+			border-left: 2px solid grey;
+			padding: 0;
+			cursor: col-resize;
 		}
 
 		canvas {
@@ -57,19 +73,21 @@
 <script src="OrbitControls.js"></script>
 <body>
 	<div class="sidebar">
+		<div class="expander"></div>
 		<input type="file" id="stl_input" onchange="handleStlFile(this.files)">
-		<div class="triangle-face-count"></div>
-		<div class="triangle-vertex-count"></div>
-		<div class="triangle-line-count"></div>
-		<div class="regular-face-count"></div>
+		<div class="triangle-face-count">Triangle Faces: --</div>
+		<div class="triangle-vertex-count">Triangle Vertices: --</div>
+		<div class="triangle-line-count">Triangle Lines: --</div>
+		<div class="divider"></div>
+		<div class="regular-face-count">Regular Faces: --</div>
+		<div class="regular-vertex-count">Regular Vertices: --</div>
+		<div class="regular-line-count">Regular Lines: --</div>
 	</div>
 </body>
 
 <script>
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera( 75, (window.innerWidth - 200) / window.innerHeight, 0.1, 1000 );
-
-console.log(camera)
 
 var renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize( window.innerWidth - 200, window.innerHeight );
@@ -96,31 +114,8 @@ var raycaster = new THREE.Raycaster();
 
 var mouse = { x: 0, y: 0 }, INTERSECTED;
 
-$(document).on("click", function(event) {
-	mouse.x = ( (event.clientX - 200) / (window.innerWidth - 200) ) * 2 - 1;
-	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-
-	var vector = new THREE.Vector3( mouse.x, mouse.y, 0.5 ).unproject( camera );
-
-	raycaster.ray.set( camera.position, vector.sub( camera.position ).normalize() );
-
-	var intersects = raycaster.intersectObjects( scene.children );
-
-	if ( intersects.length > 0 ) {
-		if ( INTERSECTED != intersects[ 0 ] ) {
-			INTERSECTED = intersects[ 0 ];
-			var matIndex = INTERSECTED.face.materialIndex;
-			if (INTERSECTED.object.material.materials[matIndex].color.g === 1) {
-				INTERSECTED.object.material.materials[matIndex].color.g = 0;
-			} else {
-				INTERSECTED.object.material.materials[matIndex].color.g = 1;
-			}
-      console.log(INTERSECTED)
-		  console.log(INTERSECTED.face.color.materialIndex)
-		}
-	} else {
-		INTERSECTED = null;
-	}
+$(document).on("mousemove", function(event) {
+	mouse.realX = event.clientX;
 });
 
 function render() {
@@ -130,14 +125,6 @@ function render() {
 }
 
 render();
-
-$(window).on("resize", function() {
-	camera.aspect = (window.innerWidth - 200) / window.innerHeight;
-	camera.updateProjectionMatrix();
-
-	renderer.setSize( (window.innerWidth - 200), window.innerHeight );
-
-});
 
 
 function handleStlFile(files) {
@@ -163,6 +150,45 @@ function handleStlFile(files) {
 				var geomMats = new Array(vertMatches.length);
 
 				var lines = {}
+				var vertices = {}
+
+				var addFaceToLine = function(lines, line, currFace) {
+					if (lines[line]) {
+						lines[line].push(currFace);
+					} else {
+						lines[line] = [currFace];
+					}
+				};
+
+				var lineHandle = function(lines, currFace, v1Index, v2Index, v3Index) {
+					var line = [v1Index,v2Index].sort();
+					addFaceToLine(lines, line, currFace);
+
+					var line = [v2Index,v3Index].sort();
+					addFaceToLine(lines, line, currFace);
+
+					var line = [v1Index,v3Index].sort();
+					addFaceToLine(lines, line, currFace);
+				};
+
+				var vertexHandle = function(split, geometry) {
+					var vertIndex = -1;
+
+					var vert = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
+					geometry.vertices.forEach(function(vertex, index) {
+						if (Math.abs(vert.x - vertex.x) < 0.0001 && Math.abs(vert.y - vertex.y) < 0.0001 && Math.abs(vert.z - vertex.z) < 0.0001) {
+							vertIndex = index + 1;
+
+							return false;
+						}
+					});
+
+					if (vertIndex === -1) {
+						vertIndex = geometry.vertices.push(vert);
+					}
+
+					return [vert, vertIndex];
+				};
 
 				for (var i = 0; i < vertMatches.length; i++) {
 					geomMats[i] = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
@@ -170,49 +196,17 @@ function handleStlFile(files) {
 
 					var v1, v2, v3, v1Index, v2Index, v3Index;
 					if (i % 3 == 0) {
-						v1Index = -1;
-
-						v1 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-						geometry.vertices.forEach(function(vertex, index) {
-							if (Math.abs(v1.x - vertex.x) < 0.0001 && Math.abs(v1.y - vertex.y) < 0.0001 && Math.abs(v1.z - vertex.z) < 0.0001) {
-								v1Index = index + 1;
-
-								return false;
-							}
-						});
-
-						if (v1Index === -1) {
-							v1Index = geometry.vertices.push(v1);
-						}
+						var result = vertexHandle(split, geometry);
+						v1 = result[0];
+						v1Index = result[1];
 					} else if (i % 3 == 1) {
-						v2Index = -1;
-
-						v2 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-						geometry.vertices.forEach(function(vertex, index) {
-							if (Math.abs(v2.x - vertex.x) < 0.0001 && Math.abs(v2.y - vertex.y) < 0.0001 && Math.abs(v2.z - vertex.z) < 0.0001) {
-								v2Index = index + 1;
-
-								return false;
-							}
-						});
-
-						if (v2Index === -1) {
-							v2Index = geometry.vertices.push(v2);
-						}
+						var result = vertexHandle(split, geometry);
+						v2 = result[0];
+						v2Index = result[1];
 					} else if (i % 3 == 2) {
-						v3Index = -1;
-						v3 = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-						geometry.vertices.forEach(function(vertex, index) {
-							if (Math.abs(v3.x - vertex.x) < 0.0001 && Math.abs(v3.y - vertex.y) < 0.0001 && Math.abs(v3.z - vertex.z) < 0.0001) {
-								v3Index = index + 1;
-
-								return false
-							}
-						});
-
-						if (v3Index === -1) {
-							v3Index = geometry.vertices.push(v3);
-						}
+						var result = vertexHandle(split, geometry);
+						v3 = result[0];
+						v3Index = result[1];
 
 						normSplit = normMatches[Math.floor(i/3)].split(" ");
 						normal = new THREE.Vector3(parseFloat(normSplit[2]),parseFloat(normSplit[3]),parseFloat(normSplit[4]));
@@ -225,25 +219,37 @@ function handleStlFile(files) {
 						var currFace = geometry.faces.push(face2);
 						currFace -= 1;
 
-						var line = [v1Index,v2Index].sort();
-						if (lines[line]) {
-							lines[line].push(currFace);
+						lineHandle(lines, currFace, v1Index, v2Index, v3Index);
+
+						var currFaceNormal = geometry.faces[geometry.faces.length - 1].normal
+						if (vertices[v1Index]) {
+							if (vertices[v1Index].length < 2) {
+								if (!(Math.abs(vertices[v1Index][0].x - currFaceNormal.x) < 0.0001 && Math.abs(vertices[v1Index][0].y - currFaceNormal.y) < 0.0001 && Math.abs(vertices[v1Index][0].z - currFaceNormal.z) < 0.0001)) {
+									vertices[v1Index].push(currFaceNormal);
+								}
+							}
 						} else {
-							lines[line] = [currFace];
+							vertices[v1Index] = [currFaceNormal];
 						}
 
-						var line = [v2Index,v3Index].sort();
-						if (lines[line]) {
-							lines[line].push(currFace);
+						if (vertices[v2Index]) {
+							if (vertices[v2Index].length < 2) {
+								if (!(Math.abs(vertices[v2Index][0].x - currFaceNormal.x) < 0.0001 && Math.abs(vertices[v2Index][0].y - currFaceNormal.y) < 0.0001 && Math.abs(vertices[v2Index][0].z - currFaceNormal.z) < 0.0001)) {
+									vertices[v2Index].push(currFaceNormal);
+								}
+							}
 						} else {
-							lines[line] = [currFace];
+							vertices[v2Index] = [currFaceNormal];
 						}
 
-						var line = [v1Index,v3Index].sort();
-						if (lines[line]) {
-							lines[line].push(currFace);
+						if (vertices[v3Index]) {
+							if (vertices[v3Index].length < 2) {
+								if (!(Math.abs(vertices[v3Index][0].x - currFaceNormal.x) < 0.0001 && Math.abs(vertices[v3Index][0].y - currFaceNormal.y) < 0.0001 && Math.abs(vertices[v3Index][0].z - currFaceNormal.z) < 0.0001)) {
+									vertices[v3Index].push(currFaceNormal);
+								}
+							}
 						} else {
-							lines[line] = [currFace];
+							vertices[v3Index] = [currFaceNormal];
 						}
 					}
 				}
@@ -255,7 +261,7 @@ function handleStlFile(files) {
 				scene.add(triangle)
 				scene.add(triangle2)
 
-				postProcess(geometry, lines)
+				postProcess(geometry, lines, vertices)
 			} else {
 				for (var i = scene.children.length - 1; i >= 0; i--) {
 					if (scene.children[i].type == "Mesh") {
@@ -330,7 +336,7 @@ function handleStlFile(files) {
 	}
 }
 
-var postProcess = function(geometry, lines) {
+var postProcess = function(geometry, lines, vertices) {
 	var faceNum = geometry.faces.length;
 	$("div.triangle-face-count").html("Triangle Faces: " + faceNum);
 
@@ -388,8 +394,90 @@ var postProcess = function(geometry, lines) {
 	}
 
 	$("div.regular-face-count").html("Regular Faces: " + regFaces.length);
-	console.log(geometry)
+
+	var regVertCount = 0;
+	for (var index in vertices) {
+		if (vertices[index].length > 1) {
+			regVertCount += 1
+		}
+	}
+	$("div.regular-vertex-count").html("Regular Vertices: " + regVertCount);
+
+	var regLineCount = 0;
+	for (var index in lines) {
+		console.log(lines[index])
+		var normal1 = geometry.faces[lines[index][0]].normal;
+		var normal2 = geometry.faces[lines[index][1]].normal;
+
+		if (!(Math.abs(normal1.x - normal2.x) < 0.0001 && Math.abs(normal1.y - normal2.y) < 0.0001 && Math.abs(normal1.z - normal2.z) < 0.0001)) {
+			regLineCount += 1;
+		}
+	}
+
+	$("div.regular-line-count").html("Regular Lines: " + regLineCount);
+
+
+	$("canvas").on("click", function(event) {
+		var sidebarWidth = $("div.sidebar").width();
+		mouse.x = ( (event.clientX - sidebarWidth) / (window.innerWidth - sidebarWidth) ) * 2 - 1;
+		mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+		var vector = new THREE.Vector3( mouse.x, mouse.y, 0.5 ).unproject( camera );
+
+		raycaster.ray.set( camera.position, vector.sub( camera.position ).normalize() );
+
+		var intersects = raycaster.intersectObjects( scene.children );
+
+		if ( intersects.length > 0 ) {
+			if ( INTERSECTED != intersects[ 0 ] ) {
+				INTERSECTED = intersects[ 0 ];
+				var matIndex = INTERSECTED.face.materialIndex;
+				console.log(INTERSECTED)
+				if (INTERSECTED.object.material.materials[matIndex].color.g === 1) {
+					INTERSECTED.object.material.materials[matIndex].color.g = 0;
+				} else {
+					INTERSECTED.object.material.materials[matIndex].color.g = 1;
+				}
+			}
+		} else {
+			INTERSECTED = null;
+		}
+	});
 }
+
+var threeResizer = function() {
+	var sidebarWidth = $("div.sidebar").width();
+
+	camera.aspect = (window.innerWidth - sidebarWidth) / window.innerHeight;
+	camera.updateProjectionMatrix();
+
+	renderer.setSize( (window.innerWidth - sidebarWidth), window.innerHeight);
+
+	$("canvas").css("left", sidebarWidth);
+}
+
+$(window).on("resize", function() {
+	threeResizer();
+});
+
+$("div.sidebar div.expander").on("mousedown", function(event) {
+	event.preventDefault();
+	var resizing = function(event) {
+		$("div.sidebar").width(mouse.realX);
+		if (mouse.realX > 200) {
+			$("div.sidebar div.expander").css("left", mouse.realX);
+		} else {
+			$("div.sidebar div.expander").css("left", 200);
+		}
+
+		threeResizer();
+	};
+	$(window).on("mousemove", resizing);
+	
+	$(window).one("mouseup", function(event) {
+		$(window).off("mousemove", resizing);
+	});
+});
 
 </script>
 
