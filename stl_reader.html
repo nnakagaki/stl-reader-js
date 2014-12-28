@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>STL Reader</title>
+	<meta charset="utf-8">
+	<title>STL Reader</title>
 	<style>
 		body { 
 			margin: 0;
@@ -68,9 +68,11 @@
 		}
 	</style>
 </head>
+
 <script src="jquery-1.11.1.min.js"></script>
 <script src="three.min.js"></script>
 <script src="OrbitControls.js"></script>
+
 <body>
 	<div class="sidebar">
 		<div class="expander"></div>
@@ -86,6 +88,7 @@
 </body>
 
 <script>
+// setting up three.js to render stl object
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera( 75, (window.innerWidth - 200) / window.innerHeight, 0.1, 1000 );
 
@@ -99,6 +102,7 @@ cameraControls = new THREE.OrbitControls(camera, renderer.domElement);
 cameraControls.target.set( 0, 0, 0);
 cameraControls.update();
 
+// maybe use lighting later -> need to use lambert or phong materials instead of basic
 // var ambientLight = new THREE.AmbientLight(0x330000);
 //  scene.add(ambientLight);
 
@@ -110,14 +114,7 @@ cameraControls.update();
 //  directionalLight.position.set(1, 1, 1).normalize();
 //  scene.add(directionalLight);
 
-var raycaster = new THREE.Raycaster();
-
-var mouse = { x: 0, y: 0 }, INTERSECTED;
-
-$(document).on("mousemove", function(event) {
-	mouse.realX = event.clientX;
-});
-
+// three.js rendering loop
 function render() {
 	renderer.render( scene, camera );
 	requestAnimationFrame( render );
@@ -127,216 +124,238 @@ function render() {
 render();
 
 
+// this function handles the file stl file input using filereader
 function handleStlFile(files) {
 	file = files[0]
 	if (file) {
-		var reader = new FileReader();
-		reader.readAsText(file, "UTF-8");
-		reader.onload = function (evt) {
-			if (evt.target.result.substr(0,5) === "solid") {
-				for (var i = scene.children.length - 1; i >= 0; i--) {
-					if (scene.children[i].type == "Mesh") {
-						scene.remove(scene.children[i]);
-					}
+		// check if file is stl file
+		var fileName = file.name;
+		if (fileName.substring(fileName.length - 4,fileName.length) === ".stl") {
+			// read as text -> if file starts with solid, it is ascii format otherwise it is binary
+			var reader = new FileReader();
+			reader.readAsText(file, "UTF-8");
+			
+			reader.onload = function (evt) {
+				// remove previous solid if any
+				removePreviousSolid();
+				if (evt.target.result.substr(0,5) === "solid") {
+					asciiHandle(evt);
+				} else {
+					binaryHandle(evt);
 				}
-
-				var vertRegex = /(vertex\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
-				var vertMatches = evt.target.result.match(vertRegex);
-
-				var normRegex = /(facet\snormal\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
-				var normMatches = evt.target.result.match(normRegex);
-
-				var geometry = new THREE.Geometry();
-				var geomMats = new Array(vertMatches.length);
-
-				var lines = {}
-				var vertices = {}
-
-				var addFaceToLine = function(lines, line, currFace) {
-					if (lines[line]) {
-						lines[line].push(currFace);
-					} else {
-						lines[line] = [currFace];
-					}
-				};
-
-				var lineHandle = function(lines, currFace, v1Index, v2Index, v3Index) {
-					var line = [v1Index,v2Index].sort();
-					addFaceToLine(lines, line, currFace);
-
-					var line = [v2Index,v3Index].sort();
-					addFaceToLine(lines, line, currFace);
-
-					var line = [v1Index,v3Index].sort();
-					addFaceToLine(lines, line, currFace);
-				};
-
-				var vertexHandle = function(split, geometry) {
-					var vertIndex = -1;
-
-					var vert = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-					geometry.vertices.forEach(function(vertex, index) {
-						if (Math.abs(vert.x - vertex.x) < 0.0001 && Math.abs(vert.y - vertex.y) < 0.0001 && Math.abs(vert.z - vertex.z) < 0.0001) {
-							vertIndex = index + 1;
-
-							return false;
-						}
-					});
-
-					if (vertIndex === -1) {
-						vertIndex = geometry.vertices.push(vert);
-					}
-
-					return [vert, vertIndex];
-				};
-
-				for (var i = 0; i < vertMatches.length; i++) {
-					geomMats[i] = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
-					split = vertMatches[i].split(" ")
-
-					var v1, v2, v3, v1Index, v2Index, v3Index;
-					if (i % 3 == 0) {
-						var result = vertexHandle(split, geometry);
-						v1 = result[0];
-						v1Index = result[1];
-					} else if (i % 3 == 1) {
-						var result = vertexHandle(split, geometry);
-						v2 = result[0];
-						v2Index = result[1];
-					} else if (i % 3 == 2) {
-						var result = vertexHandle(split, geometry);
-						v3 = result[0];
-						v3Index = result[1];
-
-						normSplit = normMatches[Math.floor(i/3)].split(" ");
-						normal = new THREE.Vector3(parseFloat(normSplit[2]),parseFloat(normSplit[3]),parseFloat(normSplit[4]));
-
-            // var face1 = new THREE.Face3(geometry.vertices.length-2,geometry.vertices.length-3,geometry.vertices.length-1);
-            // face1.materialIndex = i;
-            var face2 = new THREE.Face3(v1Index - 1, v2Index - 1, v3Index - 1, normal);
-            face2.materialIndex = i;
-						// geometry.faces.push(face1);
-						var currFace = geometry.faces.push(face2);
-						currFace -= 1;
-
-						lineHandle(lines, currFace, v1Index, v2Index, v3Index);
-
-						var currFaceNormal = geometry.faces[geometry.faces.length - 1].normal
-						if (vertices[v1Index]) {
-							if (vertices[v1Index].length < 2) {
-								if (!(Math.abs(vertices[v1Index][0].x - currFaceNormal.x) < 0.0001 && Math.abs(vertices[v1Index][0].y - currFaceNormal.y) < 0.0001 && Math.abs(vertices[v1Index][0].z - currFaceNormal.z) < 0.0001)) {
-									vertices[v1Index].push(currFaceNormal);
-								}
-							}
-						} else {
-							vertices[v1Index] = [currFaceNormal];
-						}
-
-						if (vertices[v2Index]) {
-							if (vertices[v2Index].length < 2) {
-								if (!(Math.abs(vertices[v2Index][0].x - currFaceNormal.x) < 0.0001 && Math.abs(vertices[v2Index][0].y - currFaceNormal.y) < 0.0001 && Math.abs(vertices[v2Index][0].z - currFaceNormal.z) < 0.0001)) {
-									vertices[v2Index].push(currFaceNormal);
-								}
-							}
-						} else {
-							vertices[v2Index] = [currFaceNormal];
-						}
-
-						if (vertices[v3Index]) {
-							if (vertices[v3Index].length < 2) {
-								if (!(Math.abs(vertices[v3Index][0].x - currFaceNormal.x) < 0.0001 && Math.abs(vertices[v3Index][0].y - currFaceNormal.y) < 0.0001 && Math.abs(vertices[v3Index][0].z - currFaceNormal.z) < 0.0001)) {
-									vertices[v3Index].push(currFaceNormal);
-								}
-							}
-						} else {
-							vertices[v3Index] = [currFaceNormal];
-						}
-					}
-				}
-
-				var wireframe = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
-				var triangle = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(geomMats));
-				var triangle2 = new THREE.Mesh(geometry, wireframe);
-
-				scene.add(triangle)
-				scene.add(triangle2)
-
-				postProcess(geometry, lines, vertices)
-			} else {
-				for (var i = scene.children.length - 1; i >= 0; i--) {
-					if (scene.children[i].type == "Mesh") {
-						scene.remove(scene.children[i]);
-					}
-				}
-				var reader = new FileReader();
-				reader.readAsArrayBuffer(file);
-				reader.onload = function (evt) {
-					handleStlBinary(evt.target.result)
-				}
-
-				// "stl" represents a raw STL binary read from HTTP response data
-				var handleStlBinary = function(stl) {
-				  // create three.js geometry object, discussed later
-				  var geo = new THREE.Geometry();
-
-				  // The stl binary is read into a DataView for processing
-			    var dv = new DataView(stl, 80); // 80 == unused header
-			    var isLittleEndian = true;
-
-			    // Read a 32 bit unsigned integer
-			    var triangles = dv.getUint32(0, isLittleEndian);
-
-			    var offset = 4;
-			    for (var i = 0; i < triangles; i++) {
-		        // Get the normal for this triangle by reading 3 32 but floats
-		        var normal = new THREE.Vector3(
-		          dv.getFloat32(offset, isLittleEndian),
-		          dv.getFloat32(offset+4, isLittleEndian),
-		          dv.getFloat32(offset+8, isLittleEndian)
-		        );
-		        offset += 12;
-
-		        // Get all 3 vertices for this triangle, each represented
-		        // by 3 32 bit floats.
-		        for (var j = 0; j < 3; j++) {
-	            geo.vertices.push(
-                new THREE.Vector3(
-                  dv.getFloat32(offset, isLittleEndian),
-                  dv.getFloat32(offset+4, isLittleEndian),
-                  dv.getFloat32(offset+8, isLittleEndian)
-                )
-	            );
-	            offset += 12
-		        }
-
-		        // there's also a Uint16 "attribute byte count" that we
-		        // don't need, it should always be zero.
-		        offset += 2;
-
-		        // Create a new face for from the vertices and the normal
-		        geo.faces.push(new THREE.Face3(i*3, i*3+1, i*3+2, normal));
-			    }
-
-				  var mat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
-				  var mat2 = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
-				  var mesh = new THREE.Mesh(geo, mat);
-				  var mesh2 = new THREE.Mesh(geo, mat2);
-
-					scene.add(mesh);
-					scene.add(mesh2);
-
-					postProcess(geo)
-				};
 			}
-		}
-
-		reader.onerror = function (evt) {
-			$("div.disp-stl").html("error reading file");
+			
+			reader.onerror = function (evt) {
+				console.log("error reading file")
+			}
+		} else {
+			console.log("file is not an stl file")
 		}
 	}
 }
 
+// handling ascii format stl file
+var asciiHandle = function (evt) {
+	// capture vertices and normals with regex
+	var vertRegex = /(vertex\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
+	var vertMatches = evt.target.result.match(vertRegex);
+
+	var normRegex = /(facet\snormal\s-?[\d\.]+\s-?[\d\.]+\s-?[\d\.]+)/g;
+	var normMatches = evt.target.result.match(normRegex);
+
+	// initialize three.js geometry to put all faces in
+	var geometry = new THREE.Geometry();
+	
+	// Make each face a different material so color of face can be changed when clicked.
+	// This makes larger solids render very slowly so should try another way of doing this.
+	var geomMats = new Array(vertMatches.length);
+
+	// lines is an object that is used like a hash to save which line connects which two faces.
+	// lines[vertex 1, vertex 2] = [face 1, face 2]
+	var lines = {}
+	
+	// vertices is an object that is used like a hash, saving normals of faces including the vertex.
+	// Up to two normals is saved since if there is more than one normal, it is a regular vertex.
+	// vertices[vertex index] = [normal, normal]
+	var vertices = {}
+	
+	var addFaceToLine = function(lines, line, currFace) {
+		if (lines[line]) {
+			lines[line].push(currFace);
+		} else {
+			lines[line] = [currFace];
+		}
+	};
+	
+	// function that populates the lines object
+	var lineHandle = function(lines, currFace, v1Index, v2Index, v3Index) {
+		var line = [v1Index,v2Index].sort();
+		addFaceToLine(lines, line, currFace);
+
+		var line = [v2Index,v3Index].sort();
+		addFaceToLine(lines, line, currFace);
+
+		var line = [v1Index,v3Index].sort();
+		addFaceToLine(lines, line, currFace);
+	};
+	
+	// function that populates the vertices object
+	var addNormalToVertices = function (vertexIndex, currFaceNormal) {
+		if (vertices[vertexIndex]) {
+			if (vertices[vertexIndex].length < 2) {
+				if (!isSameVectorOrVertex(vertices[vertexIndex][0], currFaceNormal)) {
+					vertices[vertexIndex].push(currFaceNormal);
+				}
+			}
+		} else {
+			vertices[vertexIndex] = [currFaceNormal];
+		}
+	}
+	
+	// Function that checks if vertex is already in the geometry. If not, adds vertex to the geometry.
+	// Returns the three.js vertex object and it's index in the geometry vertex array
+	var vertexHandle = function(split, geometry) {
+		var vertIndex = -1;
+		var vert = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
+		
+		geometry.vertices.forEach(function(vertex, index) {
+			if (isSameVectorOrVertex(vert, vertex)) {
+				vertIndex = index + 1;
+				return false;
+			}
+		});
+
+		if (vertIndex === -1) {
+			vertIndex = geometry.vertices.push(vert);
+		}
+
+		return [vert, vertIndex];
+	};
+	
+	// stl vertex handling
+	for (var i = 0; i < vertMatches.length; i++) {
+		geomMats[i] = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
+		split = vertMatches[i].split(" ")
+		
+		// since there are only triangles, on every third vertex a face object is made
+		var v1, v2, v3, v1Index, v2Index, v3Index;
+		if (i % 3 == 0) {
+			var result = vertexHandle(split, geometry);
+			v1 = result[0];
+			v1Index = result[1];
+		} else if (i % 3 == 1) {
+			var result = vertexHandle(split, geometry);
+			v2 = result[0];
+			v2Index = result[1];
+		} else if (i % 3 == 2) {
+			var result = vertexHandle(split, geometry);
+			v3 = result[0];
+			v3Index = result[1];
+
+			// stl normal handling
+			normSplit = normMatches[Math.floor(i/3)].split(" ");
+			normal = new THREE.Vector3(parseFloat(normSplit[2]),parseFloat(normSplit[3]),parseFloat(normSplit[4]));
+			
+			// making three.js face object from last three vertices and adding to the geometry
+      var face2 = new THREE.Face3(v1Index - 1, v2Index - 1, v3Index - 1, normal);
+      face2.materialIndex = i;
+			var currFace = geometry.faces.push(face2);
+			currFace -= 1;
+			
+			// making face on the back side makes the solid look better but worse performance and some bugs...
+      // var face1 = new THREE.Face3(geometry.vertices.length-2,geometry.vertices.length-3,geometry.vertices.length-1);
+      // face1.materialIndex = i;
+			// geometry.faces.push(face1);
+
+			// populate the line object
+			lineHandle(lines, currFace, v1Index, v2Index, v3Index);
+			
+			// populate the vertices object
+			var currFaceNormal = geometry.faces[geometry.faces.length - 1].normal;
+			addNormalToVertices(v1Index, currFaceNormal);
+			addNormalToVertices(v2Index, currFaceNormal);
+			addNormalToVertices(v3Index, currFaceNormal);
+		}
+	}
+
+	// adding two versions of the geometry to the scene: wireframe and basic material
+	var wireframe = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
+	var triangle = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(geomMats));
+	var triangle2 = new THREE.Mesh(geometry, wireframe);
+
+	scene.add(triangle)
+	scene.add(triangle2)
+	
+	// Filling statistics in sidebar and calculating regular faces, vertices, and lines
+	postProcess(geometry, lines, vertices)
+}
+
+
+// handling binary format stl file
+// the code for this part was copied from:
+// http://tonylukasavage.com/blog/2013/04/10/web-based-stl-viewing-three-dot-js/
+// and modified
+var binaryHandle = function (evt) {
+	var reader = new FileReader();
+	reader.readAsArrayBuffer(file);
+	reader.onload = function (evt) {
+		var stl = evt.target.result
+	  var geo = new THREE.Geometry();
+
+	  // The stl binary is read into a DataView for processing
+    var dv = new DataView(stl, 80); // 80 == unused header
+    var isLittleEndian = true;
+
+    // Read a 32 bit unsigned integer
+    var triangles = dv.getUint32(0, isLittleEndian);
+
+    var offset = 4;
+    for (var i = 0; i < triangles; i++) {
+      // Get the normal for this triangle by reading 3 32 but floats
+      var normal = new THREE.Vector3(
+        dv.getFloat32(offset, isLittleEndian),
+        dv.getFloat32(offset+4, isLittleEndian),
+        dv.getFloat32(offset+8, isLittleEndian)
+      );
+      offset += 12;
+
+      // Get all 3 vertices for this triangle, each represented
+      // by 3 32 bit floats.
+      for (var j = 0; j < 3; j++) {
+        geo.vertices.push(
+          new THREE.Vector3(
+            dv.getFloat32(offset, isLittleEndian),
+            dv.getFloat32(offset+4, isLittleEndian),
+            dv.getFloat32(offset+8, isLittleEndian)
+          )
+        );
+        offset += 12
+      }
+
+      // there's also a Uint16 "attribute byte count" that we
+      // don't need, it should always be zero.
+      offset += 2;
+
+      // Create a new face for from the vertices and the normal
+      geo.faces.push(new THREE.Face3(i*3, i*3+1, i*3+2, normal));
+    }
+
+	  var mat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
+	  var mat2 = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
+	  var mesh = new THREE.Mesh(geo, mat);
+	  var mesh2 = new THREE.Mesh(geo, mat2);
+
+		scene.add(mesh);
+		scene.add(mesh2);
+
+		postProcess(geo)
+	}
+}
+
+
+// function that fills in sidebar statistics and calculates regular faces, vertices, and lines
 var postProcess = function(geometry, lines, vertices) {
+	// filling in barebone information from the stl file triangles
 	var faceNum = geometry.faces.length;
 	$("div.triangle-face-count").html("Triangle Faces: " + faceNum);
 
@@ -348,8 +367,12 @@ var postProcess = function(geometry, lines, vertices) {
 		lineNum += 1;
 	}
 	$("div.triangle-line-count").html("Triangle Lines: " + lineNum);
-
+	
+	// faceConnections is an object that saves which face is connected to which face
+	// faceConnections[face 1] = [face 2, face 3, ...]
 	var faceConnections = {};
+	
+	// connecting the faces using the lines object
 	for (var index in lines) {
 		if (faceConnections[lines[index][0]]) {
 			faceConnections[lines[index][0]].push(lines[index][1]);
@@ -364,14 +387,17 @@ var postProcess = function(geometry, lines, vertices) {
 		}
 	}
 
+	// finding the number of regular faces using the faceConnection objects and face normals
+	// For each face connected to the current face, if the normal is the same, then it is on the same regular face.
+	// This is done until all faces and included in some regular face.
 	var checked = {};
 	var regFaces = [];
-
+	
 	var recursiveFaceConnect = function(index) {
 		faceConnections[index].forEach(function(el) {
 			if (!checked[el]) {
 				var currFaceNormal = geometry.faces[el].normal;
-				if (Math.abs(currFaceNormal.x-normal.x) < 0.0001 && Math.abs(currFaceNormal.y-normal.y) < 0.0001 && Math.abs(currFaceNormal.z-normal.z) < 0.0001) {
+				if (isSameVectorOrVertex(currFaceNormal, normal)) {
 					face.push(el);
 					checked[el] = true;
 
@@ -394,57 +420,83 @@ var postProcess = function(geometry, lines, vertices) {
 	}
 
 	$("div.regular-face-count").html("Regular Faces: " + regFaces.length);
-
+	
+	// finding the number of regular vertices using the vertices object
+	// Vertices that only have one normal associated with it is not a regular vertex.
+	// In other words, if a vertex is only connected to faces with the same normal vector, is it not a regular vertex.
 	var regVertCount = 0;
 	for (var index in vertices) {
 		if (vertices[index].length > 1) {
 			regVertCount += 1
 		}
 	}
+	
 	$("div.regular-vertex-count").html("Regular Vertices: " + regVertCount);
-
+	
+	// finding the number of regular lines using the lines object
+	// Lines that connect two faces with the same normals is not a regular line
 	var regLineCount = 0;
 	for (var index in lines) {
-		console.log(lines[index])
 		var normal1 = geometry.faces[lines[index][0]].normal;
 		var normal2 = geometry.faces[lines[index][1]].normal;
 
-		if (!(Math.abs(normal1.x - normal2.x) < 0.0001 && Math.abs(normal1.y - normal2.y) < 0.0001 && Math.abs(normal1.z - normal2.z) < 0.0001)) {
+		if (!isSameVectorOrVertex(normal1, normal2)) {
 			regLineCount += 1;
 		}
 	}
 
 	$("div.regular-line-count").html("Regular Lines: " + regLineCount);
-
-
-	$("canvas").on("click", function(event) {
-		var sidebarWidth = $("div.sidebar").width();
-		mouse.x = ( (event.clientX - sidebarWidth) / (window.innerWidth - sidebarWidth) ) * 2 - 1;
-		mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-
-		var vector = new THREE.Vector3( mouse.x, mouse.y, 0.5 ).unproject( camera );
-
-		raycaster.ray.set( camera.position, vector.sub( camera.position ).normalize() );
-
-		var intersects = raycaster.intersectObjects( scene.children );
-
-		if ( intersects.length > 0 ) {
-			if ( INTERSECTED != intersects[ 0 ] ) {
-				INTERSECTED = intersects[ 0 ];
-				var matIndex = INTERSECTED.face.materialIndex;
-				console.log(INTERSECTED)
-				if (INTERSECTED.object.material.materials[matIndex].color.g === 1) {
-					INTERSECTED.object.material.materials[matIndex].color.g = 0;
-				} else {
-					INTERSECTED.object.material.materials[matIndex].color.g = 1;
-				}
-			}
-		} else {
-			INTERSECTED = null;
-		}
-	});
 }
 
+
+// function that removes previously loaded solids
+var removePreviousSolid = function () {
+	for (var i = scene.children.length - 1; i >= 0; i--) {
+		if (scene.children[i].type == "Mesh") {
+			scene.remove(scene.children[i]);
+		}
+	}
+}
+
+
+// raycaster is used to find faces that the mouse is intersecting when the user clicks
+var raycaster = new THREE.Raycaster();
+var mouse = { x: 0, y: 0 }, intersected;
+
+// When the user clicks, faces that were intersected are found.
+// The color of the very first face that is intersected is changed to yellow or red.
+$("canvas").on("click", function(event) {
+	var sidebarWidth = $("div.sidebar").width();
+	mouse.x = ( (event.clientX - sidebarWidth) / (window.innerWidth - sidebarWidth) ) * 2 - 1;
+	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+	var vector = new THREE.Vector3( mouse.x, mouse.y, 0.5 ).unproject( camera );
+
+	raycaster.ray.set( camera.position, vector.sub( camera.position ).normalize() );
+
+	var intersects = raycaster.intersectObjects( scene.children );
+
+	if (intersects.length > 0) {
+		if (intersected != intersects[ 0 ]) {
+			intersected = intersects[ 0 ];
+			var matIndex = intersected.face.materialIndex;
+			if (intersected.object.material.materials[matIndex].color.g === 1) {
+				intersected.object.material.materials[matIndex].color.g = 0;
+			} else {
+				intersected.object.material.materials[matIndex].color.g = 1;
+			}
+		}
+	} else {
+		intersected = null;
+	}
+});
+
+// mouse x position used for sizing the sidebar
+$(document).on("mousemove", function(event) {
+	mouse.realX = event.clientX;
+});
+
+// changing the three.js renderer and camera when the window is resized or the sidebar size is changed
 var threeResizer = function() {
 	var sidebarWidth = $("div.sidebar").width();
 
@@ -460,6 +512,7 @@ $(window).on("resize", function() {
 	threeResizer();
 });
 
+// code for resizing of sidebar
 $("div.sidebar div.expander").on("mousedown", function(event) {
 	event.preventDefault();
 	var resizing = function(event) {
@@ -478,6 +531,15 @@ $("div.sidebar div.expander").on("mousedown", function(event) {
 		$(window).off("mousemove", resizing);
 	});
 });
+
+// checks if two vectors or vertices are the same by checking with 0.0001 accuracy
+var isSameVectorOrVertex = function (vector1, vector2) {
+	var condx = Math.abs(vector1.x - vector2.x) < 0.0001;
+	var condy = Math.abs(vector1.y - vector2.y) < 0.0001;
+	var condz = Math.abs(vector1.z - vector2.z) < 0.0001;
+	
+	return condx && condy && condz;
+}
 
 </script>
 
