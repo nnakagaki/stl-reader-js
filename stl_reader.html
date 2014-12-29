@@ -220,14 +220,14 @@ var asciiHandle = function (evt) {
 	};
 	
 	// function that populates the lines object
-	var lineHandle = function(lines, currFace, v1Index, v2Index, v3Index) {
-		var line = [v1Index,v2Index].sort();
+	var lineHandle = function(lines, currFace, vertIndex) {
+		var line = [vertIndex[0],vertIndex[1]].sort();
 		addFaceToLine(lines, line, currFace);
 
-		var line = [v2Index,v3Index].sort();
+		var line = [vertIndex[1],vertIndex[2]].sort();
 		addFaceToLine(lines, line, currFace);
 
-		var line = [v1Index,v3Index].sort();
+		var line = [vertIndex[0],vertIndex[2]].sort();
 		addFaceToLine(lines, line, currFace);
 	};
 	
@@ -245,51 +245,42 @@ var asciiHandle = function (evt) {
 	}
 	
 	// Function that checks if vertex is already in the geometry. If not, adds vertex to the geometry.
-	// Returns the three.js vertex object and it's index in the geometry vertex array
+	// Returns the three.js vertex index in the geometry vertex array
 	var vertexHandle = function(split, geometry) {
 		var vertIndex = -1;
 		var vert = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
-		
-		geometry.vertices.forEach(function(vertex, index) {
-			if (isSameVectorOrVertex(vert, vertex)) {
-				vertIndex = index + 1;
-				return false;
-			}
-		});
+
+		var identifier = split.join(",");
+		if (previousVertices[identifier]) {
+			vertIndex = previousVertices[identifier];
+		}
 
 		if (vertIndex === -1) {
 			vertIndex = geometry.vertices.push(vert);
+			previousVertices[identifier] = vertIndex;
 		}
 
-		return [vert, vertIndex];
+		return vertIndex;
 	};
-	
+
+	var vertIndex = new Array(3);
+	var previousVertices = {};
+
 	// stl vertex handling
 	for (var i = 0; i < vertMatches.length; i++) {
 		geomMats[i] = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
-		split = vertMatches[i].split(" ")
+		split = vertMatches[i].split(" ");
 		
 		// since there are only triangles, on every third vertex a face object is made
-		var v1, v2, v3, v1Index, v2Index, v3Index;
-		if (i % 3 == 0) {
-			var result = vertexHandle(split, geometry);
-			v1 = result[0];
-			v1Index = result[1];
-		} else if (i % 3 == 1) {
-			var result = vertexHandle(split, geometry);
-			v2 = result[0];
-			v2Index = result[1];
-		} else if (i % 3 == 2) {
-			var result = vertexHandle(split, geometry);
-			v3 = result[0];
-			v3Index = result[1];
-
+		vertIndex[i % 3] = vertexHandle(split, geometry);
+		
+		if (i % 3 == 2) {
 			// stl normal handling
 			normSplit = normMatches[Math.floor(i/3)].split(" ");
 			normal = new THREE.Vector3(parseFloat(normSplit[2]),parseFloat(normSplit[3]),parseFloat(normSplit[4]));
-			
+
 			// making three.js face object from last three vertices and adding to the geometry
-      var face2 = new THREE.Face3(v1Index - 1, v2Index - 1, v3Index - 1, normal);
+      var face2 = new THREE.Face3(vertIndex[0] - 1, vertIndex[1] - 1, vertIndex[2] - 1, normal);
       face2.materialIndex = i;
 			var currFace = geometry.faces.push(face2);
 			currFace -= 1;
@@ -300,13 +291,13 @@ var asciiHandle = function (evt) {
 			// geometry.faces.push(face1);
 
 			// populate the line object
-			lineHandle(lines, currFace, v1Index, v2Index, v3Index);
+			lineHandle(lines, currFace, vertIndex);
 			
 			// populate the vertices object
 			var currFaceNormal = geometry.faces[geometry.faces.length - 1].normal;
-			addNormalToVertices(v1Index, currFaceNormal);
-			addNormalToVertices(v2Index, currFaceNormal);
-			addNormalToVertices(v3Index, currFaceNormal);
+			addNormalToVertices(vertIndex[0], currFaceNormal);
+			addNormalToVertices(vertIndex[1], currFaceNormal);
+			addNormalToVertices(vertIndex[2], currFaceNormal);
 		}
 	}
 
@@ -342,6 +333,7 @@ var binaryHandle = function (evt) {
     var triangles = dv.getUint32(0, isLittleEndian);
 
     var offset = 4;
+    var previousVertices = {};
     for (var i = 0; i < triangles; i++) {
       // Get the normal for this triangle by reading 3 32 but floats
       var normal = new THREE.Vector3(
@@ -351,16 +343,31 @@ var binaryHandle = function (evt) {
       );
       offset += 12;
 
+      var vertIndex = new Array(3);
+
       // Get all 3 vertices for this triangle, each represented
       // by 3 32 bit floats.
       for (var j = 0; j < 3; j++) {
-        geo.vertices.push(
-          new THREE.Vector3(
+
+        vertIndex[j] = -1;
+				var vert = new THREE.Vector3(
             dv.getFloat32(offset, isLittleEndian),
             dv.getFloat32(offset+4, isLittleEndian),
             dv.getFloat32(offset+8, isLittleEndian)
-          )
-        );
+          );
+
+				var identifier = dv.getInt32(offset, isLittleEndian).toString() + "," + 
+												 dv.getInt32(offset + 4, isLittleEndian).toString() + "," +
+												 dv.getInt32(offset + 8, isLittleEndian).toString();
+				if (previousVertices[identifier]) {
+					vertIndex[j] = previousVertices[identifier];
+				}
+
+				if (vertIndex[j] === -1) {
+					vertIndex[j] = geo.vertices.push(vert);
+					previousVertices[identifier] = vertIndex[j];
+				}
+
         offset += 12
       }
 
@@ -369,7 +376,7 @@ var binaryHandle = function (evt) {
       offset += 2;
 
       // Create a new face for from the vertices and the normal
-      geo.faces.push(new THREE.Face3(i*3, i*3+1, i*3+2, normal));
+      geo.faces.push(new THREE.Face3(vertIndex[0] - 1, vertIndex[1] - 1, vertIndex[2] - 1, normal));
     }
 
 	  var mat = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
@@ -611,7 +618,7 @@ $("div.sidebar div.expander").on("mousedown", function(event) {
 	});
 });
 
-// chaging face selection mode
+// changing face selection mode
 $("div.sidebar div.face-selectors button").on("click", function(event) {
 	$(event.currentTarget).addClass("selected");
 	if ($(event.currentTarget)[0].classList[0] === "triangle") {
