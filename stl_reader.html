@@ -169,7 +169,7 @@ function handleStlFile(files) {
 			
 			reader.onload = function (evt) {
 				// remove previous solid if any
-				removePreviousSolid();
+				removePrevious();
 				if (evt.target.result.substr(0,5) === "solid") {
 					asciiHandle(evt);
 				} else {
@@ -269,26 +269,23 @@ var asciiHandle = function (evt) {
 	// stl vertex handling
 	for (var i = 0; i < vertMatches.length; i++) {
 		geomMats[i] = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
+		// doubleside rendering renders weirdly
+		// geomMats[i].side = THREE.DoubleSide;
 		split = vertMatches[i].split(" ");
 		
 		// since there are only triangles, on every third vertex a face object is made
 		vertIndex[i % 3] = vertexHandle(split, geometry);
-		
+
 		if (i % 3 == 2) {
 			// stl normal handling
 			normSplit = normMatches[Math.floor(i/3)].split(" ");
 			normal = new THREE.Vector3(parseFloat(normSplit[2]),parseFloat(normSplit[3]),parseFloat(normSplit[4]));
 
 			// making three.js face object from last three vertices and adding to the geometry
-      var face2 = new THREE.Face3(vertIndex[0] - 1, vertIndex[1] - 1, vertIndex[2] - 1, normal);
-      face2.materialIndex = i;
-			var currFace = geometry.faces.push(face2);
+      var face = new THREE.Face3(vertIndex[0] - 1, vertIndex[1] - 1, vertIndex[2] - 1, normal);
+      face.materialIndex = i;
+			var currFace = geometry.faces.push(face);
 			currFace -= 1;
-			
-			// making face on the back side makes the solid look better but worse performance and some bugs...
-      // var face1 = new THREE.Face3(geometry.vertices.length-2,geometry.vertices.length-3,geometry.vertices.length-1);
-      // face1.materialIndex = i;
-			// geometry.faces.push(face1);
 
 			// populate the line object
 			lineHandle(lines, currFace, vertIndex);
@@ -305,6 +302,7 @@ var asciiHandle = function (evt) {
 	var wireframe = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
 	var triangle = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(geomMats));
 	var triangle2 = new THREE.Mesh(geometry, wireframe);
+
 
 	scene.add(triangle)
 	scene.add(triangle2)
@@ -491,13 +489,15 @@ var postProcess = function(geometry, materials, lines, vertices) {
 }
 
 
-// function that removes previously loaded solids
-var removePreviousSolid = function () {
+// function that removes previously loaded solids and canvas listener
+var removePrevious = function () {
 	for (var i = scene.children.length - 1; i >= 0; i--) {
 		if (scene.children[i].type == "Mesh") {
 			scene.remove(scene.children[i]);
 		}
 	}
+
+	$("canvas").off("click");
 }
 
 // checks if two vectors or vertices are the same by checking with 0.0001 accuracy
