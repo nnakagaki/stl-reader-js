@@ -19,12 +19,19 @@
 		div.sidebar { 
 			position: fixed;
 			top: 0;
-			bottom: 0;
+			height: 100%;
 			left: 0;
 			width: 200px;
 			background: lightgrey;
 			z-index: 1;
 			min-width: 200px;
+			
+		}
+
+		div.sidebar div.contents {
+			height: 100%;
+			padding: 0;
+			overflow-y: scroll;
 		}
 
 		div.sidebar input[type="file"] { 
@@ -70,9 +77,9 @@
 		}
 
 		div.sidebar div.face-selectors h1 {
-			font-size: 18px;
+			font-size: 17px;
 			padding: 0;
-			margin: 3px;
+			margin: 3px 0;
 		}
 
 		div.sidebar div.face-selectors button {
@@ -102,19 +109,21 @@
 <body>
 	<div class="sidebar">
 		<div class="expander"></div>
-		<input type="file" id="stl_input" onchange="handleStlFile(this.files)">
-		<div class="triangle-face-count">Triangle Faces: --</div>
-		<div class="triangle-vertex-count">Triangle Vertices: --</div>
-		<div class="triangle-line-count">Triangle Lines: --</div>
-		<div class="divider"></div>
-		<div class="regular-face-count">Regular Faces: --</div>
-		<div class="regular-vertex-count">Regular Vertices: --</div>
-		<div class="regular-line-count">Regular Lines: --</div>
-		<div class="divider"></div>
-		<div class="face-selectors">
-			<h1>Face selection mode</h1>
-			<button class="triangle selected">Triangle</button>
-			<button class="regular">Regular</button>
+		<div class="contents">
+			<input type="file" id="stl_input" onchange="handleStlFile(this.files)">
+			<div class="triangle-face-count">Triangle Faces: --</div>
+			<div class="triangle-vertex-count">Triangle Vertices: --</div>
+			<div class="triangle-line-count">Triangle Lines: --</div>
+			<div class="divider"></div>
+			<div class="regular-face-count">Regular Faces: --</div>
+			<div class="regular-vertex-count">Regular Vertices: --</div>
+			<div class="regular-line-count">Regular Lines: --</div>
+			<div class="divider"></div>
+			<div class="face-selectors">
+				<h1>Face selection mode</h1>
+				<button class="triangle selected">Triangle</button>
+				<button class="regular">Regular</button>
+			</div>
 		</div>
 	</div>
 </body>
@@ -122,16 +131,16 @@
 <script>
 // setting up three.js to render stl object
 var scene = new THREE.Scene();
-var camera = new THREE.PerspectiveCamera( 75, (window.innerWidth - 200) / window.innerHeight, 0.1, 1000 );
+var camera = new THREE.PerspectiveCamera(75, (window.innerWidth - 200) / window.innerHeight, 0.1, 1000);
 
 var renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize( window.innerWidth - 200, window.innerHeight );
+renderer.setSize(window.innerWidth - 200, window.innerHeight);
 document.body.appendChild( renderer.domElement );
 
-camera.position.set( -40, -40, 10 );
+camera.position.set(-40, -40, 10);
 
 cameraControls = new THREE.OrbitControls(camera, renderer.domElement);
-cameraControls.target.set( 0, 0, 0);
+cameraControls.target.set(0, 0, 0);
 cameraControls.update();
 
 // maybe use lighting later -> need to use lambert or phong materials instead of basic
@@ -148,8 +157,8 @@ cameraControls.update();
 
 // three.js rendering loop
 function render() {
-	renderer.render( scene, camera );
-	requestAnimationFrame( render );
+	renderer.render(scene, camera);
+	requestAnimationFrame(render);
 	cameraControls.update();
 }
 
@@ -245,7 +254,7 @@ var asciiHandle = function (evt) {
 	}
 	
 	// Function that checks if vertex is already in the geometry. If not, adds vertex to the geometry.
-	// Returns the three.js vertex index in the geometry vertex array
+	// Returns the three.js vertex index in the geometry vertex array.
 	var vertexHandle = function(split, geometry) {
 		var vertIndex = -1;
 		var vert = new THREE.Vector3(parseFloat(split[1]),parseFloat(split[2]),parseFloat(split[3]));
@@ -323,7 +332,7 @@ var binaryHandle = function (evt) {
 	reader.readAsArrayBuffer(file);
 	reader.onload = function (evt) {
 		var stl = evt.target.result
-	  var geo = new THREE.Geometry();
+	  var geometry = new THREE.Geometry();
 
 	  // The stl binary is read into a DataView for processing
     var dv = new DataView(stl, 80); // 80 == unused header
@@ -364,7 +373,7 @@ var binaryHandle = function (evt) {
 				}
 
 				if (vertIndex[j] === -1) {
-					vertIndex[j] = geo.vertices.push(vert);
+					vertIndex[j] = geometry.vertices.push(vert);
 					previousVertices[identifier] = vertIndex[j];
 				}
 
@@ -376,13 +385,13 @@ var binaryHandle = function (evt) {
       offset += 2;
 
       // Create a new face for from the vertices and the normal
-      geo.faces.push(new THREE.Face3(vertIndex[0] - 1, vertIndex[1] - 1, vertIndex[2] - 1, normal));
+      geometry.faces.push(new THREE.Face3(vertIndex[0] - 1, vertIndex[1] - 1, vertIndex[2] - 1, normal));
     }
 
 	  var mat1 = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
 	  var mat2 = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
-	  var mesh1 = new THREE.Mesh(geo, mat1);
-	  var mesh2 = new THREE.Mesh(geo, mat2);
+	  var mesh1 = new THREE.Mesh(geometry, mat1);
+	  var mesh2 = new THREE.Mesh(geometry, mat2);
 
 		scene.add(mesh1);
 		scene.add(mesh2);
