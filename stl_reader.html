@@ -268,9 +268,6 @@ var asciiHandle = function (evt) {
 
 	// stl vertex handling
 	for (var i = 0; i < vertMatches.length; i++) {
-		geomMats[i] = new THREE.MeshBasicMaterial({color: 0xff0000, opacity: 0.5, transparent: true});
-		// doubleside rendering renders weirdly
-		// geomMats[i].side = THREE.DoubleSide;
 		split = vertMatches[i].split(" ");
 		
 		// since there are only triangles, on every third vertex a face object is made
@@ -298,11 +295,16 @@ var asciiHandle = function (evt) {
 		}
 	}
 
-	// adding two versions of the geometry to the scene: wireframe and basic material
-	var wireframe = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
-	var triangle = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(geomMats));
-	var triangle2 = new THREE.Mesh(geometry, wireframe);
+	// setting each face color to default color (red)
+	geometry.faces.forEach(function(face) {
+		face.color.setRGB(1,0,0);
+	})
 
+	// adding two versions of the geometry to the scene: wireframe and basic material
+	var triangle = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({color: 0xffffff, vertexColors: THREE.FaceColors}));
+
+	var wireframe = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
+	var triangle2 = new THREE.Mesh(geometry, wireframe);
 
 	scene.add(triangle)
 	scene.add(triangle2)
@@ -528,12 +530,10 @@ var faceSelectionSetup = function(regFaces, geometry, materials) {
 
 		// function that changes color of a face
 		var triangleFaceColorChanger = function(face) {
-			var matIndex = face.materialIndex;
-
-			if (materials[matIndex].color.g === 1) {
-				materials[matIndex].color.g = 0;
+			if (face.color.g === 1) {
+				face.color.g = 0;
 			} else {
-				materials[matIndex].color.g = 1;
+				face.color.g = 1;
 			}
 		};
 
@@ -543,6 +543,7 @@ var faceSelectionSetup = function(regFaces, geometry, materials) {
 				intersected = intersects[ 0 ];
 				if ($("div.sidebar div.face-selectors button.selected")[0].classList[0] === "triangle") {
 					triangleFaceColorChanger(intersected.face);
+					intersected.object.geometry.colorsNeedUpdate = true;
 				} else {
 					var intersectedRegFace;
 					regFaces.every(function(regFace) {
@@ -567,6 +568,8 @@ var faceSelectionSetup = function(regFaces, geometry, materials) {
 					intersectedRegFace.forEach(function(faceIndex) {
 						triangleFaceColorChanger(geometry.faces[faceIndex]);
 					});
+
+					geometry.colorsNeedUpdate = true;
 				}
 			}
 		} else {
