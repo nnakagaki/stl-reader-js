@@ -40,6 +40,5 @@ Sample stl files are located in the repo.
 * There is only one solid object
 
 === Future work
-* Binary stl file format does not do regular face, side, and vertex counting.
 * Camera controls are clunky.
-* Do not make each face different material, since it takes up a lot of memory to render.
+* Does not seem to work for bigger objects.
